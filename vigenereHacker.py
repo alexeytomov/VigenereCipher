@@ -103,6 +103,76 @@ def kasiskiExamination(ciphertext):
 
 	return allLikelyKeyLengths
 
+def getNthSubkeysLetters(nth, keyLength, message):
+	# Возвращает каждую n-ю букву из каждого набора длиной keyLength
 
+	# Используем функцию удаления небуквенных символов
+	message = NONLETTERS_PETTERN.sub('', message)
 
+	i = nth - 1
+	letters = []
+	while i < len(message):
+		letters.append(message[i])
+		i += keyLength 
+	
+	return ''.join(letters)
 
+def attemptHackWithKeyLength(ciphertext, mostLikelyKeyLength):
+	# Определяем наиболее вероятные буквы для подключа
+	ciphertextUp = ciphertext.upper()
+	# allFreqScores - список длиной mostLikelyKeyLength,
+	# элементами которого являются списки freqScores
+	allFreqScores = []
+	for nth in range(1, mostLikelyKeyLength + 1):
+		nthLetters = getNthSubkeyLetters(nth, mostLikelyKeyLength, ciphertextUp)
+
+		#Список кортежей вида ( <буква>, <оценка частотного соответствия> )
+		freqScores = [] 
+		for possibleKey in LETTERS:
+			decryptedText = vigenereCipher.decryptMessage(possibleKey, nthLetters)
+			keyAndFreqMatchTuple = (possibleKey, freqAnalysis.russianFreqMatchScore(decryptedText))
+			freqScores.append(keyAndFreqMatchTuple)
+
+			#Сортировка по оценкам частотного соответсвия
+			freqScores.sort(key=getItemAtIndexOne, reverse=True)
+
+			allFreqScores.append(freqScores[:NUM_MOST_FREQ_LETTERS])
+
+	if not SILENT_MODE:
+		for i in range(len(allFreqScores)):
+			print('Possible letters for letter %s of the key: ' % (i + 1), end='')
+			for freqScore in allFreqScores[i]:
+				print('%s ' % freqScore[0], end='')	
+			print()
+
+	#Сопоставляем наборы букв каждый с каждым через метод product
+	#Пример: product('ABCD', 'xy') --> Ax Ay Bx By Cx Cy Dx Dy
+	for indexes in intertools.product(range(NUM_MOST_FREQ_LETTERS), repeat=mostLikelyKeyLength):
+		possibleKey = ''
+		for i in range(mostLikelyKeyLength):
+			possibleKey += allFreqScores[i][indexes[i]][0] #???
+
+			if not SILENT_MODE:
+				print('Attempting with key: %s' % (possibleKey))
+
+			decryptedText = vigenereCipher.decryptMessage(possibleKey, cipherTextUP)
+
+			if detectRussian.isRussian(decryptedText):
+				#Возвращаем исходный регистр букв во взломанном шифротексте
+				origCase = []
+				for i in range(len(ciphertext)):
+					if ciphertext[i].isupper():
+						origCase.append(decryptedText[i].upper())
+					else:
+						origCase.append(decryptedText[i].lower())
+				decryptedText = ''.join(origCase)
+
+				print('Possible encryption hack with key %s:' % (possibleKey))
+				print(decryptedText[:200]) # выводим первые 200 символов
+				print()
+				print('Enter D if done, anything else to continue hacking:')
+				response = input('> ')
+
+				if response.strip().upper().startswith('D'):
+					return decryptedText
+	return None
