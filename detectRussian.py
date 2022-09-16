@@ -33,7 +33,7 @@ def noneSymbols(message): #deleting other symbols (but 'space' is here)
             clearString.append(symbol)
     return ''.join(clearString)
 
-def Russian(message, wordPercentage = 20, letterPercentage = 85):
+def isRussian(message, wordPercentage = 60, letterPercentage = 85):
     wordChecking = coutWords(message) * 100 >= wordPercentage
     letterChecking = len(noneSymbols(message)) / float(len(message)) * 100 >= letterPercentage
 

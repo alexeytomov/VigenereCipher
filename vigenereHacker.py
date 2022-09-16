@@ -1,14 +1,18 @@
+import itertools, re
 import detectRussian, freqAnalysis, vigenereCipher
-#ans = isRussian.Russian(message) #True/False
 
 LETTERS = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮ"
 MAX_KEY_LENGTH = 16 # ограничение максимально-возможной длины ключа
-NUM_MOST_FREQ_LETTERS = 4 # ограничения количества буква на подключ
-SILENT_MODE = False # True
+NUM_MOST_FREQ_LETTERS = 8 #ограничения количества буква на подключ
 NONLETTERS_PATTERN = re.compile('[^А-Я]')
 
 def main():
-	ciphertext = """  """
+	with open('bunin_encrypted.txt', 'r') as f:
+		ciphertextList = f.readlines()
+	f.close()
+
+	ciphertext = ''.join(ciphertextList)
+	hackedMessage = hackVigenere(ciphertext)
 
 	if hackedMessage != None:
 		print(hackedMessage)
@@ -107,7 +111,7 @@ def getNthSubkeysLetters(nth, keyLength, message):
 	# Возвращает каждую n-ю букву из каждого набора длиной keyLength
 
 	# Используем функцию удаления небуквенных символов
-	message = NONLETTERS_PETTERN.sub('', message)
+	message = NONLETTERS_PATTERN.sub('', message)
 
 	i = nth - 1
 	letters = []
@@ -123,8 +127,9 @@ def attemptHackWithKeyLength(ciphertext, mostLikelyKeyLength):
 	# allFreqScores - список длиной mostLikelyKeyLength,
 	# элементами которого являются списки freqScores
 	allFreqScores = []
+	#Собираем строки, зашифрованные подключами предпологаемого ключа
 	for nth in range(1, mostLikelyKeyLength + 1):
-		nthLetters = getNthSubkeyLetters(nth, mostLikelyKeyLength, ciphertextUp)
+		nthLetters = getNthSubkeysLetters(nth, mostLikelyKeyLength, ciphertextUp)
 
 		#Список кортежей вида ( <буква>, <оценка частотного соответствия> )
 		freqScores = [] 
@@ -133,46 +138,74 @@ def attemptHackWithKeyLength(ciphertext, mostLikelyKeyLength):
 			keyAndFreqMatchTuple = (possibleKey, freqAnalysis.russianFreqMatchScore(decryptedText))
 			freqScores.append(keyAndFreqMatchTuple)
 
-			#Сортировка по оценкам частотного соответсвия
-			freqScores.sort(key=getItemAtIndexOne, reverse=True)
+		#Сортировка по оценкам частотного соответсвия
+		freqScores.sort(key=getItemAtIndexOne, reverse=True)
 
-			allFreqScores.append(freqScores[:NUM_MOST_FREQ_LETTERS])
+		allFreqScores.append(freqScores[:NUM_MOST_FREQ_LETTERS])
 
-	if not SILENT_MODE:
-		for i in range(len(allFreqScores)):
-			print('Possible letters for letter %s of the key: ' % (i + 1), end='')
-			for freqScore in allFreqScores[i]:
-				print('%s ' % freqScore[0], end='')	
-			print()
+	
+	for i in range(len(allFreqScores)):
+		print('Possible letters for letter %s of the key: ' % (i + 1), end='')
+		for freqScore in allFreqScores[i]:
+			print('%s ' % freqScore[0], end='')	
+		print()
 
 	#Сопоставляем наборы букв каждый с каждым через метод product
-	#Пример: product('ABCD', 'xy') --> Ax Ay Bx By Cx Cy Dx Dy
-	for indexes in intertools.product(range(NUM_MOST_FREQ_LETTERS), repeat=mostLikelyKeyLength):
+	#Пример: product('ABC', repeat=3) --> ['AAA', 'AAB', AAC' ... , 'DDD']
+	for indexes in itertools.product(range(NUM_MOST_FREQ_LETTERS), repeat=mostLikelyKeyLength):
 		possibleKey = ''
 		for i in range(mostLikelyKeyLength):
 			possibleKey += allFreqScores[i][indexes[i]][0] #???
 
-			if not SILENT_MODE:
-				print('Attempting with key: %s' % (possibleKey))
+		print('Attempting with key: %s' % (possibleKey))
 
-			decryptedText = vigenereCipher.decryptMessage(possibleKey, cipherTextUP)
+		decryptedText = vigenereCipher.decryptMessage(possibleKey, ciphertextUp)
 
-			if detectRussian.isRussian(decryptedText):
+		if detectRussian.isRussian(decryptedText):
 				#Возвращаем исходный регистр букв во взломанном шифротексте
-				origCase = []
-				for i in range(len(ciphertext)):
-					if ciphertext[i].isupper():
-						origCase.append(decryptedText[i].upper())
-					else:
-						origCase.append(decryptedText[i].lower())
-				decryptedText = ''.join(origCase)
+			origCase = []
+			for i in range(len(ciphertext)):
+				if ciphertext[i].isupper():
+					origCase.append(decryptedText[i].upper())
+				else:
+					origCase.append(decryptedText[i].lower())
+			decryptedText = ''.join(origCase)
 
-				print('Possible encryption hack with key %s:' % (possibleKey))
-				print(decryptedText[:200]) # выводим первые 200 символов
-				print()
-				print('Enter D if done, anything else to continue hacking:')
-				response = input('> ')
-
-				if response.strip().upper().startswith('D'):
-					return decryptedText
+			print('Possible encryption hack with key %s:' % (possibleKey))
+			print(decryptedText[:200]) # выводим первые 200 символов
+			print()
+			print('Enter D if done, anything else to continue hacking:')
+			response = input('> ')
+			if response.strip().upper().startswith('D'):
+				return decryptedText
 	return None
+
+def hackVigenere(ciphertext):
+	#Во-первых, применяем метод Касиски для выяснения возможной длины ключа
+	allLikelyKeyLengths = kasiskiExamination(ciphertext)
+	keyLengthStr = ''
+	for keyLength in allLikelyKeyLengths:
+		keyLengthStr += '%s ' % (keyLength)
+	print('Kasiski examination results say the most likely key lengths are: ' + keyLengthStr + '\n')
+	hackedMessage = None 
+	for keyLength in allLikelyKeyLengths:
+		print('Attempting hack with key length %s (%s possible keys) ...' % (keyLength, NUM_MOST_FREQ_LETTERS ** keyLength))
+		hackedMessage = attemptHackWithKeyLength(ciphertext, keyLength)
+		if hackedMessage != None:
+			break
+
+	# Если ни один из найденных вариантов ключа не сработал, начать атаку 
+	# методом грубой силы
+	if hackedMessage == None:
+		print('Unable to hack message with likely key length(s). Brute-forcing key length...')
+		for keyLength in range(1, MAX_KEY_LENGTH + 1):
+			#Не проверять уже опробованные ключи
+			if keyLength not in allLikelyKeyLengths:
+				print('Attempting hack with key length %s (%s possuble keys)...' % (keyLength, NUM_MOST_FREQ_LETTERS ** keyLength))
+				hackedMessage = attemptHackWithKeyLength(ciphertext, keyLength)
+				if hackedMessage != None:
+					break
+	return hackedMessage
+
+if __name__ == '__main__':
+	main()		
